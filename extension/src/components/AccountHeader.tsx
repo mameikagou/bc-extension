@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Account } from '../utils/accountStorage';
+
+export interface Account {
+  id: string;
+  name: string;
+  address: string;
+  icon?: string;
+}
 
 interface AccountHeaderProps {
   currentAccount: Account;
   accounts: Account[];
   onAccountChange: (accountId: string) => void;
-  onAccountDelete?: (accountId: string) => Promise<boolean>;
 }
 
 const AccountHeader: React.FC<AccountHeaderProps> = ({ 
   currentAccount, 
   accounts, 
-  onAccountChange,
-  onAccountDelete
+  onAccountChange 
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const navigate = useNavigate();
   
   // 格式化地址显示
@@ -36,41 +38,6 @@ const AccountHeader: React.FC<AccountHeaderProps> = ({
   const selectAccount = (accountId: string) => {
     onAccountChange(accountId);
     setIsDropdownOpen(false);
-  };
-  
-  // 删除账户
-  const handleDeleteAccount = async (accountId: string, event: React.MouseEvent) => {
-    // 阻止事件冒泡，避免触发选择账户
-    event.stopPropagation();
-    
-    // 只有一个账户时不允许删除
-    if (accounts.length <= 1) {
-      setDeleteError('不能删除唯一的账户');
-      return;
-    }
-    
-    // 确认删除
-    if (!window.confirm('确定要删除此账户吗？此操作无法撤销！')) {
-      return;
-    }
-    
-    if (onAccountDelete) {
-      try {
-        setIsDeleting(true);
-        setDeleteError('');
-        const success = await onAccountDelete(accountId);
-        if (!success) {
-          throw new Error('删除账户失败');
-        }
-        // 删除成功后自动关闭下拉菜单
-        setIsDropdownOpen(false);
-      } catch (error) {
-        console.error('删除账户失败:', error);
-        setDeleteError('删除账户失败，请重试');
-      } finally {
-        setIsDeleting(false);
-      }
-    }
   };
   
   return (
@@ -153,20 +120,6 @@ const AccountHeader: React.FC<AccountHeaderProps> = ({
           marginTop: '10px',
           padding: '12px'
         }}>
-          {deleteError && (
-            <div style={{
-              backgroundColor: '#e74c3c',
-              color: 'white',
-              padding: '8px',
-              borderRadius: '4px',
-              marginBottom: '12px',
-              fontSize: '12px',
-              textAlign: 'center'
-            }}>
-              {deleteError}
-            </div>
-          )}
-          
           {accounts.map(account => (
             <div 
               key={account.id}
@@ -174,7 +127,6 @@ const AccountHeader: React.FC<AccountHeaderProps> = ({
                 padding: '12px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
                 cursor: 'pointer',
                 borderRadius: '8px',
                 background: account.id === currentAccount.id ? '#333' : 'transparent',
@@ -182,44 +134,24 @@ const AccountHeader: React.FC<AccountHeaderProps> = ({
               }}
               onClick={() => selectAccount(account.id)}
             >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #3498db, #9b59b6, #e74c3c, #f1c40f)',
-                  marginRight: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontWeight: 'bold'
-                }}>
-                  {account.icon || account.name.charAt(0)}
-                </div>
-                <div style={{ color: 'white' }}>
-                  <div style={{ fontWeight: 'bold' }}>{account.name}</div>
-                  <div style={{ fontSize: '12px', color: '#aaa' }}>{formatAddress(account.address)}</div>
-                </div>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #3498db, #9b59b6, #e74c3c, #f1c40f)',
+                marginRight: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold'
+              }}>
+                {account.icon || account.name.charAt(0)}
               </div>
-              
-              {/* 删除按钮 */}
-              {onAccountDelete && accounts.length > 1 && (
-                <div
-                  onClick={(e) => handleDeleteAccount(account.id, e)}
-                  style={{
-                    marginLeft: '8px',
-                    color: '#e74c3c',
-                    opacity: isDeleting ? 0.5 : 1,
-                    cursor: isDeleting ? 'not-allowed' : 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '12px'
-                  }}
-                >
-                  {isDeleting ? '删除中...' : '删除'}
-                </div>
-              )}
+              <div style={{ color: 'white' }}>
+                <div style={{ fontWeight: 'bold' }}>{account.name}</div>
+                <div style={{ fontSize: '12px', color: '#aaa' }}>{formatAddress(account.address)}</div>
+              </div>
             </div>
           ))}
           <div style={{

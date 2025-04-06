@@ -21,9 +21,7 @@ export interface IpfsFile {
   cid: string;
   name: string;
   size: number;
-  timestamp?: number;  // 旧格式
-  uploadTime?: string; // 新格式 - ISO字符串
-  type?: string;
+  timestamp: number;
 }
 
 // 默认账户信息
@@ -147,119 +145,149 @@ export const fileUtils = {
 
 // IPFS文件操作API
 export const ipfsFileApi = {
-  // 获取IPFS文件历史
-  getHistory: (): Promise<IpfsFile[]> => {
-    return new Promise((resolve) => {
-      console.log('使用模拟数据替代真实历史记录');
-      
-      // 直接返回测试数据，不再使用chrome.storage.local
-      setTimeout(() => {
-        // 模拟的测试数据
-        const testData = [
-          {
-            cid: 'bafybeiecidl2uz4qno3ycc6xwk2emgpfohn4xdmryb5axyl6ht5jv67tee',
-            name: '测试文件1.jpg',
-            type: 'image/jpeg',
-            size: 1024 * 1024 * 2.5,
-            timestamp: Date.now() - 3600000,
-            uploadTime: new Date(Date.now() - 3600000).toISOString()
-          },
-          {
-            cid: 'bafybeihcviruibsknjwow6nhvxsjsjmugvgzw5pinbv7nb6et77hytwxl4',
-            name: '测试文档.pdf',
-            type: 'application/pdf',
-            size: 1024 * 1024 * 1.2,
-            timestamp: Date.now() - 86400000,
-            uploadTime: new Date(Date.now() - 86400000).toISOString()
-          },
-          {
-            cid: 'bafybeifxqttlwjmyjcu2eppr6dbz5vb7sbnanstusrjja4xz3ve75vkdvm',
-            name: '代码示例.js',
-            type: 'application/javascript',
-            size: 1024 * 15,
-            timestamp: Date.now() - 2 * 86400000,
-            uploadTime: new Date(Date.now() - 2 * 86400000).toISOString()
-          }
-        ];
-        
-        console.log('返回模拟数据:', testData.length, '条');
-        resolve(testData);
-      }, 300); // 模拟网络延迟
-    });
-  },
-  
-  // 旧版方法名称保持兼容性
-  getUploadHistory: function(): Promise<IpfsFile[]> {
-    return this.getHistory();
-  },
-  
   // 上传文件到IPFS
-  uploadFile: (file: File): Promise<IpfsFile> => {
-    return new Promise((resolve, reject) => {
-      console.log('模拟文件上传');
+  async uploadFile(file: File): Promise<IpfsFile> {
+    try {
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        throw new Error('Chrome API不可用');
+      }
       
-      // 模拟上传延迟
-      setTimeout(() => {
-        try {
-          // 生成一个随机的CID (IPFS v1格式)
-          const cid = 'bafybeie' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-          
-          // 创建文件记录
-          const fileData = {
-            cid,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            uploadTime: new Date().toISOString(),
-            timestamp: Date.now()
-          };
-          
-          console.log('模拟上传成功:', fileData);
-          resolve(fileData);
-        } catch (error) {
-          console.error('模拟上传失败:', error);
-          reject(new Error('上传失败'));
+      // 转换文件为base64
+      const base64Content = await fileUtils.fileToBase64(file);
+      
+      // 发送到后台处理
+      const response = await sendMessageToBackground({
+        type: 'ipfs_add',
+        params: {
+          content: base64Content,
+          name: file.name,
+          type: file.type,
+          size: file.size
         }
-      }, 1000);
-    });
+      });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      // 创建文件记录
+      const ipfsFile: IpfsFile = {
+        cid: response.cid,
+        name: file.name,
+        size: file.size,
+        timestamp: Date.now()
+      };
+      
+      // 保存到已上传文件列表
+      await this.saveFileToHistory(ipfsFile);
+      
+      return ipfsFile;
+    } catch (error) {
+      console.error('上传文件失败:', error);
+      throw error;
+    }
   },
   
-  // 下载IPFS文件
-  downloadFile: (cid: string): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      console.log('模拟文件下载，CID:', cid);
+  // 根据CID获取文件
+  async getFile(cid: string): Promise<{ content: string, name?: string, mimeType?: string }> {
+    try {
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        throw new Error('Chrome API不可用');
+      }
       
-      // 模拟下载延迟
-      setTimeout(() => {
-        try {
-          // 模拟下载成功
-          const fileData = {
-            content: new TextEncoder().encode('模拟文件内容: ' + cid),
-            name: 'download-' + cid.substring(0, 8) + '.txt',
-            type: 'text/plain'
-          };
-          
-          console.log('模拟下载成功:', fileData);
-          resolve(fileData);
-        } catch (error) {
-          console.error('模拟下载失败:', error);
-          reject(new Error('下载失败'));
-        }
-      }, 800);
-    });
+      // 从后台获取文件
+      const response = await sendMessageToBackground({
+        type: 'ipfs_get',
+        params: { cid }
+      });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      return {
+        content: response.content,
+        name: response.name,
+        mimeType: response.mimeType
+      };
+    } catch (error) {
+      console.error('获取文件失败:', error);
+      throw error;
+    }
   },
   
-  // 清除历史记录
-  clearHistory: (): Promise<boolean> => {
-    return new Promise((resolve) => {
-      console.log('模拟清除历史记录');
+  // 获取上传历史
+  async getUploadHistory(): Promise<IpfsFile[]> {
+    try {
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，无法获取上传历史');
+        return [];
+      }
       
-      // 模拟操作延迟
-      setTimeout(() => {
-        console.log('模拟清除历史记录成功');
-        resolve(true);
-      }, 500);
-    });
+      return new Promise((resolve) => {
+        chrome.storage.local.get('ipfsFiles', (result: any) => {
+          const files = result.ipfsFiles || [];
+          resolve(files);
+        });
+      });
+    } catch (error) {
+      console.error('获取上传历史失败:', error);
+      return [];
+    }
+  },
+  
+  // 保存文件到历史记录
+  async saveFileToHistory(file: IpfsFile): Promise<boolean> {
+    try {
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法保存文件历史');
+        return false;
+      }
+      
+      // 获取现有历史
+      const existingFiles = await this.getUploadHistory();
+      
+      // 添加新文件（避免重复）
+      const exists = existingFiles.some(f => f.cid === file.cid);
+      if (!exists) {
+        const updatedFiles = [file, ...existingFiles].slice(0, 50); // 只保留最近50个
+        
+        return new Promise((resolve) => {
+          chrome.storage.local.set({ ipfsFiles: updatedFiles }, () => {
+            resolve(true);
+          });
+        });
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('保存文件历史失败:', error);
+      return false;
+    }
+  },
+  
+  // 清除上传历史
+  async clearUploadHistory(): Promise<boolean> {
+    try {
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法清除文件历史');
+        return false;
+      }
+      
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ ipfsFiles: [] }, () => {
+          resolve(true);
+        });
+      });
+    } catch (error) {
+      console.error('清除文件历史失败:', error);
+      return false;
+    }
   }
 };
 
@@ -267,21 +295,26 @@ export const ipfsFileApi = {
 export const accountApi = {
   // 获取所有账户
   async getAccounts(): Promise<Account[]> {
-    console.log('获取账户，使用模拟数据');
-    
     try {
-      // 从localStorage获取
-      const accountsJson = localStorage.getItem('accounts');
-      if (accountsJson) {
-        const accounts = JSON.parse(accountsJson);
-        if (Array.isArray(accounts) && accounts.length > 0) {
-          return accounts;
-        }
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，返回默认账户');
+        return DEFAULT_ACCOUNTS;
       }
-      
-      // 没有保存的账户，则初始化并保存默认账户
-      localStorage.setItem('accounts', JSON.stringify(DEFAULT_ACCOUNTS));
-      return DEFAULT_ACCOUNTS;
+
+      // 先尝试从storage获取
+      return new Promise((resolve) => {
+        chrome.storage.local.get('accounts', (result: any) => {
+          if (result.accounts && Array.isArray(result.accounts) && result.accounts.length > 0) {
+            resolve(result.accounts);
+          } else {
+            // 没有保存的账户，则初始化并保存默认账户
+            chrome.storage.local.set({ accounts: DEFAULT_ACCOUNTS }, () => {
+              resolve(DEFAULT_ACCOUNTS);
+            });
+          }
+        });
+      });
     } catch (error) {
       console.error('获取账户失败:', error);
       return DEFAULT_ACCOUNTS;
@@ -291,14 +324,24 @@ export const accountApi = {
   // 获取当前选中的账户ID
   async getCurrentAccountId(): Promise<string> {
     try {
-      const currentAccountId = localStorage.getItem('currentAccountId');
-      if (currentAccountId) {
-        return currentAccountId;
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，返回默认账户ID');
+        return "1";
       }
-      
-      // 没有选中的账户，则设置为第一个账户
-      localStorage.setItem('currentAccountId', "1");
-      return "1";
+
+      return new Promise((resolve) => {
+        chrome.storage.local.get('currentAccountId', (result: any) => {
+          if (result.currentAccountId) {
+            resolve(result.currentAccountId);
+          } else {
+            // 没有选中的账户，则设置为第一个账户
+            chrome.storage.local.set({ currentAccountId: "1" }, () => {
+              resolve("1");
+            });
+          }
+        });
+      });
     } catch (error) {
       console.error('获取当前账户ID失败:', error);
       return "1";
@@ -331,8 +374,17 @@ export const accountApi = {
   // 设置当前账户ID
   async setCurrentAccountId(accountId: string): Promise<boolean> {
     try {
-      localStorage.setItem('currentAccountId', accountId);
-      return true;
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法设置当前账户');
+        return false;
+      }
+
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ currentAccountId: accountId }, () => {
+          resolve(true);
+        });
+      });
     } catch (error) {
       console.error('设置当前账户ID失败:', error);
       return false;
@@ -353,9 +405,12 @@ export const accountApi = {
       };
       
       const updatedAccounts = [...accounts, newAccount];
-      localStorage.setItem('accounts', JSON.stringify(updatedAccounts));
       
-      return newAccount;
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ accounts: updatedAccounts }, () => {
+          resolve(newAccount);
+        });
+      });
     } catch (error) {
       console.error('添加账户失败:', error);
       throw error;
@@ -365,22 +420,25 @@ export const accountApi = {
   // 检查是否有账户，没有则初始化
   async initializeIfNeeded(): Promise<boolean> {
     try {
-      // 检查localStorage中是否已有账户
-      const accountsJson = localStorage.getItem('accounts');
-      const currentAccountId = localStorage.getItem('currentAccountId');
-      
-      // 如果已经有账户和选中的账户ID，则无需初始化
-      if (accountsJson && currentAccountId) {
-        const accounts = JSON.parse(accountsJson);
-        if (Array.isArray(accounts) && accounts.length > 0) {
-          return false; // 返回false表示不需要初始化
-        }
-      }
-      
-      // 需要初始化
-      localStorage.setItem('accounts', JSON.stringify(DEFAULT_ACCOUNTS));
-      localStorage.setItem('currentAccountId', "1");
-      return true; // 返回true表示已初始化
+      return new Promise((resolve) => {
+        chrome.storage.local.get(['accounts', 'currentAccountId'], (result: any) => {
+          // 如果已经有账户和选中的账户ID，则无需初始化
+          if (result.accounts && Array.isArray(result.accounts) && result.accounts.length > 0 && result.currentAccountId) {
+            resolve(false); // 返回false表示不需要初始化
+            return;
+          }
+          
+          // 需要初始化
+          const initialState = {
+            accounts: DEFAULT_ACCOUNTS,
+            currentAccountId: "1"
+          };
+          
+          chrome.storage.local.set(initialState, () => {
+            resolve(true); // 返回true表示已初始化
+          });
+        });
+      });
     } catch (error) {
       console.error('初始化账户失败:', error);
       return false;
@@ -410,24 +468,14 @@ export const extensionApi = {
   // 获取当前激活的IPFS节点
   async getCurrentIpfsNode(): Promise<IpfsNode | null> {
     try {
-      // 从localStorage中获取当前节点
-      const nodeId = localStorage.getItem('selectedIpfsNodeId') || "1";
-      const nodesJson = localStorage.getItem('ipfsNodes');
-      let nodes = DEFAULT_IPFS_NODES;
-      
-      if (nodesJson) {
-        try {
-          const parsedNodes = JSON.parse(nodesJson);
-          if (Array.isArray(parsedNodes) && parsedNodes.length > 0) {
-            nodes = parsedNodes;
-          }
-        } catch (e) {
-          console.error('解析节点数据失败:', e);
-        }
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，无法获取当前IPFS节点');
+        return DEFAULT_IPFS_NODES[0];
       }
-      
-      const currentNode = nodes.find(node => node.id === nodeId) || nodes[0];
-      return currentNode;
+
+      const response = await sendMessageToBackground({ type: 'getCurrentIpfsNode' });
+      return response.currentNode || DEFAULT_IPFS_NODES[0];
     } catch (error) {
       console.error('获取当前IPFS节点失败:', error);
       return DEFAULT_IPFS_NODES[0];
@@ -440,21 +488,14 @@ export const ipfsNodeApi = {
   // 获取所有节点
   async getNodes(): Promise<IpfsNode[]> {
     try {
-      const nodesJson = localStorage.getItem('ipfsNodes');
-      if (nodesJson) {
-        try {
-          const nodes = JSON.parse(nodesJson);
-          if (Array.isArray(nodes) && nodes.length > 0) {
-            return nodes;
-          }
-        } catch (e) {
-          console.error('解析节点数据失败:', e);
-        }
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，返回默认节点');
+        return DEFAULT_IPFS_NODES;
       }
-      
-      // 如果没有存储的节点或解析失败，使用默认节点
-      localStorage.setItem('ipfsNodes', JSON.stringify(DEFAULT_IPFS_NODES));
-      return DEFAULT_IPFS_NODES;
+
+      const response = await sendMessageToBackground({ type: 'getIpfsNodes' });
+      return response.nodes || DEFAULT_IPFS_NODES;
     } catch (error) {
       console.error('获取节点失败:', error);
       return DEFAULT_IPFS_NODES;
@@ -464,14 +505,14 @@ export const ipfsNodeApi = {
   // 获取当前选中的节点ID
   async getSelectedNodeId(): Promise<string> {
     try {
-      const nodeId = localStorage.getItem('selectedIpfsNodeId');
-      if (nodeId) {
-        return nodeId;
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.warn('Chrome API不可用，返回默认节点ID');
+        return "1";
       }
-      
-      // 没有选中的节点，设置为默认节点
-      localStorage.setItem('selectedIpfsNodeId', "1");
-      return "1";
+
+      const response = await sendMessageToBackground({ type: 'getSelectedIpfsNodeId' });
+      return response.nodeId || "1";
     } catch (error) {
       console.error('获取当前节点ID失败:', error);
       return "1";
@@ -481,7 +522,16 @@ export const ipfsNodeApi = {
   // 保存节点列表
   async saveNodes(nodes: IpfsNode[]): Promise<boolean> {
     try {
-      localStorage.setItem('ipfsNodes', JSON.stringify(nodes));
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法保存节点');
+        return false;
+      }
+
+      await sendMessageToBackground({ 
+        type: 'saveIpfsNodes', 
+        nodes 
+      });
       return true;
     } catch (error) {
       console.error('保存节点失败:', error);
@@ -492,7 +542,16 @@ export const ipfsNodeApi = {
   // 设置当前选中的节点
   async setSelectedNodeId(nodeId: string): Promise<boolean> {
     try {
-      localStorage.setItem('selectedIpfsNodeId', nodeId);
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法设置当前节点');
+        return false;
+      }
+
+      await sendMessageToBackground({ 
+        type: 'setSelectedIpfsNodeId', 
+        nodeId 
+      });
       return true;
     } catch (error) {
       console.error('设置当前节点失败:', error);
@@ -503,17 +562,22 @@ export const ipfsNodeApi = {
   // 测试节点连接
   async testConnection(nodeId: string): Promise<{success: boolean, message: string}> {
     try {
-      // 模拟节点连接测试
-      console.log(`模拟测试节点连接: ${nodeId}`);
-      
-      // 模拟延迟
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // 随机成功或失败
-      const success = Math.random() > 0.3;
+      // 检查Chrome API是否可用
+      if (!isChromeApiAvailable()) {
+        console.error('Chrome API不可用，无法测试连接');
+        return {
+          success: false,
+          message: 'Chrome API不可用，无法测试连接'
+        };
+      }
+
+      const response = await sendMessageToBackground({ 
+        type: 'testIpfsConnection', 
+        nodeId 
+      });
       return {
-        success: success,
-        message: success ? '连接成功' : '连接超时或失败'
+        success: !!response.success,
+        message: response.success ? '连接成功' : (response.error || '连接失败')
       };
     } catch (error) {
       return {

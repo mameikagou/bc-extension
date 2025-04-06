@@ -34,18 +34,14 @@
       
       pendingRequests[id] = { resolve, reject };
       
-      const message = {
+      window.postMessage({
         type: 'BC_EXTENSION_REQUEST',
         id,
         payload: {
           method,
           params
         }
-      };
-      
-      console.log('injectScript 发送请求:', method, params, message);
-      
-      window.postMessage(message, '*');
+      }, '*');
     });
   }
   
@@ -69,48 +65,6 @@
     // 签名消息
     async signMessage(message) {
       return sendRequest('signMessage', { message });
-    },
-    
-    // 上传文件到IPFS
-    async uploadFileToIpfs(file) {
-      try {
-        // 简化文件处理，只发送基本信息
-        return await sendRequest('uploadFileToIpfs', { 
-          file: {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            // 不发送实际内容，让后台模拟
-            content: 'mock-content-' + Math.random()
-          }
-        });
-      } catch (error) {
-        console.error('上传文件失败:', error);
-        throw error;
-      }
-    },
-    
-    // 获取IPFS文件上传历史
-    async getIpfsFileHistory() {
-      try {
-        console.log('发送getIpfsFileHistory请求');
-        const response = await sendRequest('getIpfsFileHistory', {});
-        console.log('收到getIpfsFileHistory响应:', response);
-        return response;
-      } catch (error) {
-        console.error('获取上传历史失败:', error);
-        throw error;
-      }
-    },
-    
-    // 下载IPFS文件
-    async downloadIpfsFile(cid) {
-      try {
-        return await sendRequest('downloadIpfsFile', { cid });
-      } catch (error) {
-        console.error('下载文件失败:', error);
-        throw error;
-      }
     },
 
     // IPFS相关API

@@ -1,5 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { IpfsFile, ipfsFileApi } from '../utils/chromeApi';
+import { IpfsFile } from '../utils/chromeApi';
+import localforage from 'localforage';
+
+// 初始化localforage实例
+const ipfsFilesStore = localforage.createInstance({
+  name: 'ipfs-files',
+  storeName: 'files'
+});
 
 interface IpfsFileUploadProps {
   onFileUploaded?: (file: IpfsFile) => void;
@@ -39,17 +46,72 @@ const IpfsFileUpload: React.FC<IpfsFileUploadProps> = ({ onFileUploaded }) => {
     }
   };
 
+  // 生成随机IPFS CID (模拟)
+  const generateFakeCid = (): string => {
+    // IPFS CID v1格式通常以 "bafy" 开头
+    return 'bafybeie' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  };
+
+  // 读取文件内容为ArrayBuffer
+  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(reader.result);
+        } else {
+          reject(new Error('无法读取文件'));
+        }
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
   const uploadFile = async (file: File) => {
     setIsUploading(true);
     setError(null);
     
     try {
-      // 使用共享API上传文件
-      const ipfsFile = await ipfsFileApi.uploadFile(file);
+      // 模拟上传延迟
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // 触发回调
-      if (onFileUploaded) {
-        onFileUploaded(ipfsFile);
+      // 生成CID
+      const cid = generateFakeCid();
+      
+      // 读取文件内容
+      const fileContent = await readFileAsArrayBuffer(file);
+      
+      // 创建文件记录
+      const ipfsFile: IpfsFile = {
+        cid,
+        name: file.name,
+        size: file.size,
+        timestamp: Date.now()
+      };
+      
+      // 存储文件元数据到历史记录
+      try {
+        // 获取现有历史记录
+        const files = await ipfsFilesStore.getItem<IpfsFile[]>('uploadHistory') || [];
+        
+        // 添加新文件到历史记录
+        const updatedFiles = [ipfsFile, ...files].slice(0, 50); // 只保留最近50个
+        await ipfsFilesStore.setItem('uploadHistory', updatedFiles);
+        
+        // 存储文件内容
+        await ipfsFilesStore.setItem(`file:${cid}`, {
+          content: fileContent,
+          type: file.type
+        });
+        
+        // 触发回调
+        if (onFileUploaded) {
+          onFileUploaded(ipfsFile);
+        }
+      } catch (storageError) {
+        console.error('存储文件失败:', storageError);
+        throw new Error('存储文件失败');
       }
     } catch (err) {
       console.error('Upload error:', err);

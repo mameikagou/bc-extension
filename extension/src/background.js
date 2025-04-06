@@ -1,26 +1,11 @@
-// 添加localForage
-importScripts('https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js');
-
-// 初始化localforage实例
-const ipfsFilesStore = localforage.createInstance({
-  name: 'ipfs-files',
-  storeName: 'files'
-});
-
 // 存储已连接的网站
 const connectedSites = new Set();
 // 模拟账户信息
 let accounts = [{ address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e" }];
 // 存储等待响应的请求
 const pendingRequests = {};
-
-// 默认IPFS节点
-const DEFAULT_IPFS_NODES = [
-  { id: "1", name: "Infura IPFS", url: "https://ipfs.infura.io:5001" },
-  { id: "2", name: "Cloudflare IPFS", url: "https://cloudflare-ipfs.com" },
-  { id: "3", name: "Pinata", url: "https://api.pinata.cloud" },
-  { id: "4", name: "Local Node", url: "http://localhost:5001" },
-];
+// 存储上传文件的缓存 (模拟)
+const ipfsFileCache = new Map();
 
 // 处理扩展图标点击
 chrome.action.onClicked.addListener(() => {
@@ -28,34 +13,16 @@ chrome.action.onClicked.addListener(() => {
 });
 
 // 监听来自content script的消息
-chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 确保消息来自内容脚本
-  if (!sender.tab) {
-    console.log('忽略非内容脚本消息:', request);
-    return false;
-  }
+  if (!sender.tab) return;
 
-  console.log('Background 收到请求详情:', {
-    request,
-    sender: {
-      tab: sender.tab.id,
-      url: sender.tab.url
-    }
-  });
-  
   const origin = request.origin || (sender.tab.url ? new URL(sender.tab.url).origin : null);
-  const method = request.method || request.type; // 兼容两种格式
-  const params = request.params || {};
-  
-  console.log('Background 处理详情:', {
-    origin,
-    method,
-    params,
-    methodType: typeof method
-  });
+  const method = request.type;
+  const params = request.params;
   
   // 处理IPFS相关请求
-  if (method && method.startsWith('ipfs_')) {
+  if (method.startsWith('ipfs_')) {
     handleIpfsRequest(method, params, sendResponse);
     return true; // 异步响应
   }
@@ -63,28 +30,24 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   // 处理标准请求
   switch (method) {
     case 'connect':
-      console.log('BG V4 处理connect请求');
       handleConnect(origin, sendResponse);
-      return true;
+      break;
     case 'getAccounts':
-      console.log('BG V4 处理getAccounts请求');
       handleGetAccounts(origin, sendResponse);
-      return true;
+      break;
     case 'signMessage':
-      console.log('BG V4 处理signMessage请求');
       handleSignMessage(origin, params?.message, sendResponse);
-      return true;
+      break;
     default:
-      console.error('不支持的请求类型:', method);
       sendResponse({ error: '不支持的请求类型' });
-      return false;
   }
+  
+  // 返回true表示我们会异步发送响应
+  return true;
 });
 
-// 处理来自弹窗的确认消息
+// 处理来自弹窗的确认消息以及React组件的API请求
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background 收到其他请求:', request);
-  
   // 处理连接响应
   if (request.type === 'connection_response') {
     const { requestId, approved, origin } = request;
@@ -148,25 +111,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   // 获取当前激活的IPFS节点
   if (request.type === 'getCurrentIpfsNode') {
-    const nodeId = localStorage.getItem('selectedIpfsNodeId') || "1";
-    const nodesJson = localStorage.getItem('ipfsNodes');
-    const nodes = nodesJson ? JSON.parse(nodesJson) : DEFAULT_IPFS_NODES;
-    const currentNode = nodes.find(node => node.id === nodeId) || null;
-    sendResponse({ currentNode });
+    chrome.storage.local.get(['ipfsNodes', 'selectedIpfsNodeId'], (result) => {
+      const nodeId = result.selectedIpfsNodeId || "1";
+      const nodes = result.ipfsNodes || DEFAULT_IPFS_NODES;
+      const currentNode = nodes.find(node => node.id === nodeId) || null;
+      sendResponse({ currentNode });
+    });
     return true;
   }
   
   // 处理来自React组件的IPFS节点API请求
   if (request.type === 'getIpfsNodes') {
-    const nodesJson = localStorage.getItem('ipfsNodes');
-    const nodes = nodesJson ? JSON.parse(nodesJson) : DEFAULT_IPFS_NODES;
-    sendResponse({ nodes });
+    chrome.storage.local.get('ipfsNodes', (result) => {
+      sendResponse({ nodes: result.ipfsNodes || DEFAULT_IPFS_NODES });
+    });
     return true;
   }
   
   if (request.type === 'getSelectedIpfsNodeId') {
-    const nodeId = localStorage.getItem('selectedIpfsNodeId') || "1";
-    sendResponse({ nodeId });
+    chrome.storage.local.get('selectedIpfsNodeId', (result) => {
+      sendResponse({ nodeId: result.selectedIpfsNodeId || "1" });
+    });
     return true;
   }
   
@@ -176,8 +141,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
     
-    localStorage.setItem('ipfsNodes', JSON.stringify(request.nodes));
-    sendResponse({ success: true });
+    chrome.storage.local.set({
+      ipfsNodes: request.nodes
+    }, () => {
+      sendResponse({ success: true });
+    });
     return true;
   }
   
@@ -187,8 +155,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
     
-    localStorage.setItem('selectedIpfsNodeId', request.nodeId);
-    sendResponse({ success: true });
+    chrome.storage.local.set({
+      selectedIpfsNodeId: request.nodeId
+    }, () => {
+      sendResponse({ success: true });
+    });
     return true;
   }
   
@@ -198,24 +169,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
     
-    const nodesJson = localStorage.getItem('ipfsNodes');
-    const nodes = nodesJson ? JSON.parse(nodesJson) : DEFAULT_IPFS_NODES;
-    const node = nodes.find(n => n.id === request.nodeId);
-    
-    if (!node) {
-      sendResponse({ error: '未找到指定的节点' });
-      return true;
-    }
-    
-    // 模拟连接测试
-    setTimeout(() => {
-      const isSuccess = Math.random() > 0.3;
-      if (isSuccess) {
-        sendResponse({ success: true, node });
-      } else {
-        sendResponse({ error: '连接超时或失败' });
+    chrome.storage.local.get('ipfsNodes', (result) => {
+      const nodes = result.ipfsNodes || DEFAULT_IPFS_NODES;
+      const node = nodes.find(n => n.id === request.nodeId);
+      
+      if (!node) {
+        sendResponse({ error: '未找到指定的节点' });
+        return;
       }
-    }, 800);
+      
+      // 模拟连接测试
+      setTimeout(() => {
+        const isSuccess = Math.random() > 0.3;
+        if (isSuccess) {
+          sendResponse({ success: true, node });
+        } else {
+          sendResponse({ error: '连接超时或失败' });
+        }
+      }, 800);
+    });
     return true;
   }
 });
@@ -224,17 +196,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function handleIpfsRequest(method, params, sendResponse) {
   switch (method) {
     case 'ipfs_getCurrentNode':
-      const nodeId = localStorage.getItem('selectedIpfsNodeId') || "1";
-      const nodesJson = localStorage.getItem('ipfsNodes');
-      const nodes = nodesJson ? JSON.parse(nodesJson) : DEFAULT_IPFS_NODES;
-      const currentNode = nodes.find(node => node.id === nodeId) || null;
-      sendResponse({ currentNode });
+      chrome.storage.local.get(['ipfsNodes', 'selectedIpfsNodeId'], (result) => {
+        const nodeId = result.selectedIpfsNodeId || "1";
+        const nodes = result.ipfsNodes || DEFAULT_IPFS_NODES;
+        const currentNode = nodes.find(node => node.id === nodeId) || null;
+        sendResponse({ currentNode });
+      });
       break;
       
     case 'ipfs_getNodes':
-      const storedNodesJson = localStorage.getItem('ipfsNodes');
-      const storedNodes = storedNodesJson ? JSON.parse(storedNodesJson) : DEFAULT_IPFS_NODES;
-      sendResponse({ nodes: storedNodes });
+      chrome.storage.local.get('ipfsNodes', (result) => {
+        sendResponse({ nodes: result.ipfsNodes || DEFAULT_IPFS_NODES });
+      });
       break;
       
     case 'ipfs_switchNode':
@@ -243,17 +216,21 @@ function handleIpfsRequest(method, params, sendResponse) {
         return;
       }
       
-      const switchNodesJson = localStorage.getItem('ipfsNodes');
-      const switchNodes = switchNodesJson ? JSON.parse(switchNodesJson) : DEFAULT_IPFS_NODES;
-      const node = switchNodes.find(n => n.id === params.nodeId);
-      
-      if (!node) {
-        sendResponse({ error: '未找到指定的节点' });
-        return;
-      }
-      
-      localStorage.setItem('selectedIpfsNodeId', params.nodeId);
-      sendResponse({ success: true, node });
+      chrome.storage.local.get('ipfsNodes', (result) => {
+        const nodes = result.ipfsNodes || DEFAULT_IPFS_NODES;
+        const node = nodes.find(n => n.id === params.nodeId);
+        
+        if (!node) {
+          sendResponse({ error: '未找到指定的节点' });
+          return;
+        }
+        
+        chrome.storage.local.set({
+          selectedIpfsNodeId: params.nodeId
+        }, () => {
+          sendResponse({ success: true, node });
+        });
+      });
       break;
       
     case 'ipfs_add':
@@ -267,6 +244,20 @@ function handleIpfsRequest(method, params, sendResponse) {
         try {
           // 生成随机CID
           const cid = 'Qm' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          
+          // 存储文件内容到缓存
+          ipfsFileCache.set(cid, {
+            content: params.content,
+            name: params.name || 'unnamed',
+            type: params.type || 'application/octet-stream',
+            size: params.size || params.content.length
+          });
+          
+          // 如果缓存过大，删除最早的项目
+          if (ipfsFileCache.size > 100) {
+            const firstKey = ipfsFileCache.keys().next().value;
+            ipfsFileCache.delete(firstKey);
+          }
           
           sendResponse({ 
             cid, 
@@ -287,7 +278,18 @@ function handleIpfsRequest(method, params, sendResponse) {
       // 模拟IPFS获取操作
       setTimeout(() => {
         try {
-          // 如果CID格式正确，返回模拟内容
+          // 检查缓存中是否有此文件
+          if (ipfsFileCache.has(params.cid)) {
+            const fileData = ipfsFileCache.get(params.cid);
+            sendResponse({ 
+              content: fileData.content,
+              name: fileData.name,
+              mimeType: fileData.type
+            });
+            return;
+          }
+          
+          // 如果没有找到文件但CID格式正确，返回模拟内容
           if (params.cid.startsWith('Qm')) {
             sendResponse({ 
               content: 'IPFS内容: ' + params.cid,
@@ -304,25 +306,26 @@ function handleIpfsRequest(method, params, sendResponse) {
       break;
       
     case 'ipfs_testConnection':
-      const testNodesJson = localStorage.getItem('ipfsNodes');
-      const testNodes = testNodesJson ? JSON.parse(testNodesJson) : DEFAULT_IPFS_NODES;
-      const testNodeId = params?.nodeId;
-      const testNode = testNodes.find(n => n.id === testNodeId);
-      
-      if (!testNode) {
-        sendResponse({ error: '未找到指定的节点' });
-        return;
-      }
-      
-      // 模拟连接测试
-      setTimeout(() => {
-        const isSuccess = Math.random() > 0.3;
-        if (isSuccess) {
-          sendResponse({ success: true, node: testNode });
-        } else {
-          sendResponse({ error: '连接超时或失败' });
+      chrome.storage.local.get('ipfsNodes', (result) => {
+        const nodes = result.ipfsNodes || DEFAULT_IPFS_NODES;
+        const nodeId = params?.nodeId;
+        const node = nodes.find(n => n.id === nodeId);
+        
+        if (!node) {
+          sendResponse({ error: '未找到指定的节点' });
+          return;
         }
-      }, 800);
+        
+        // 模拟连接测试
+        setTimeout(() => {
+          const isSuccess = Math.random() > 0.3;
+          if (isSuccess) {
+            sendResponse({ success: true, node });
+          } else {
+            sendResponse({ error: '连接超时或失败' });
+          }
+        }, 800);
+      });
       break;
       
     default:
@@ -330,23 +333,18 @@ function handleIpfsRequest(method, params, sendResponse) {
   }
 }
 
+// 默认IPFS节点
+const DEFAULT_IPFS_NODES = [
+  { id: "1", name: "Infura IPFS", url: "https://ipfs.infura.io:5001" },
+  { id: "2", name: "Cloudflare IPFS", url: "https://cloudflare-ipfs.com" },
+  { id: "3", name: "Pinata", url: "https://api.pinata.cloud" },
+  { id: "4", name: "Local Node", url: "http://localhost:5001" },
+];
+
 // 处理连接请求
 function handleConnect(origin, sendResponse) {
   try {
-    // 已连接的站点直接返回成功
-    if (connectedSites.has(origin)) {
-      console.log('站点已连接:', origin);
-      sendResponse({ success: true });
-      return;
-    }
-    
-    // 添加到连接站点列表（简化起见，跳过弹窗确认）
-    console.log('添加站点到连接列表:', origin);
-    connectedSites.add(origin);
-    sendResponse({ success: true });
-    
     // 生成请求ID
-    /*
     const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
     
     // 创建一个弹出窗口
@@ -364,23 +362,19 @@ function handleConnect(origin, sendResponse) {
         windowId: window.id
       };
     });
-    */
   } catch (error) {
-    console.error('连接处理错误:', error);
-    sendResponse({ success: false, error: error.message });
+    sendResponse({ error: error.message });
   }
 }
 
 // 处理获取账户请求
 function handleGetAccounts(origin, sendResponse) {
   if (!connectedSites.has(origin)) {
-    console.log('网站未连接，无法获取账户:', origin);
-    sendResponse({ success: false, error: '网站未连接' });
+    sendResponse({ error: '网站未连接' });
     return;
   }
   
-  console.log('返回账户信息');
-  sendResponse({ success: true, data: accounts });
+  sendResponse({ accounts });
 }
 
 // 处理签名消息请求
