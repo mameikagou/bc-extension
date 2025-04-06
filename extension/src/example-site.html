@@ -34,6 +34,63 @@
       color: #e74c3c;
       font-weight: bold;
     }
+    .file-upload-area {
+      border: 2px dashed #3498db;
+      padding: 30px;
+      border-radius: 8px;
+      text-align: center;
+      margin: 20px 0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .file-upload-area:hover {
+      background-color: rgba(52, 152, 219, 0.1);
+    }
+    .file-upload-area.dragover {
+      background-color: rgba(52, 152, 219, 0.2);
+      border-color: #2980b9;
+    }
+    .file-upload-spinner {
+      display: none;
+      width: 40px;
+      height: 40px;
+      margin: 10px auto;
+      border: 4px solid rgba(52, 152, 219, 0.1);
+      border-radius: 50%;
+      border-top: 4px solid #3498db;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .file-history {
+      margin-top: 20px;
+    }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #f5f5f5;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .file-info {
+      flex: 1;
+    }
+    .file-name {
+      font-weight: bold;
+    }
+    .file-cid {
+      font-size: 0.8em;
+      color: #666;
+      word-break: break-all;
+    }
+    .file-actions button {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -55,6 +112,21 @@
     <input type="text" id="message-input" placeholder="输入要签名的消息">
     <button id="sign-message-button">签名消息</button>
     <pre id="signature-result">暂无签名结果</pre>
+  </div>
+  
+  <div>
+    <h2>IPFS文件上传</h2>
+    <div id="file-upload-area" class="file-upload-area">
+      <input type="file" id="file-input" style="display: none;">
+      <div id="upload-message">拖拽文件到此处 或 点击上传</div>
+      <div id="upload-spinner" class="file-upload-spinner"></div>
+    </div>
+    <pre id="upload-result">暂无上传结果</pre>
+    
+    <h3>已上传文件</h3>
+    <div id="file-history" class="file-history">
+      <p>暂无上传记录</p>
+    </div>
   </div>
   
   <script>
@@ -79,6 +151,14 @@
       const accountsResult = document.getElementById('accounts-result');
       const signatureResult = document.getElementById('signature-result');
       
+      // 文件上传相关元素
+      const fileUploadArea = document.getElementById('file-upload-area');
+      const fileInput = document.getElementById('file-input');
+      const uploadMessage = document.getElementById('upload-message');
+      const uploadSpinner = document.getElementById('upload-spinner');
+      const uploadResult = document.getElementById('upload-result');
+      const fileHistory = document.getElementById('file-history');
+      
       // 连接按钮事件
       connectButton.addEventListener('click', async () => {
         try {
@@ -86,6 +166,10 @@
           connectionStatus.textContent = '已连接';
           connectionStatus.className = 'success';
           console.log('连接结果:', result);
+          
+          // 连接成功后立即尝试更新文件历史
+          console.log('连接成功，尝试获取文件历史');
+          setTimeout(updateFileHistory, 500);
         } catch (error) {
           connectionStatus.textContent = `连接失败: ${error.message}`;
           connectionStatus.className = 'error';
@@ -120,6 +204,181 @@
           console.error('签名失败:', error);
         }
       });
+      
+      // 文件上传区域点击事件
+      fileUploadArea.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      // 文件选择事件
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          uploadFile(e.target.files[0]);
+        }
+      });
+      
+      // 拖拽事件
+      fileUploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileUploadArea.classList.add('dragover');
+      });
+      
+      fileUploadArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileUploadArea.classList.remove('dragover');
+      });
+      
+      fileUploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileUploadArea.classList.remove('dragover');
+        
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          uploadFile(e.dataTransfer.files[0]);
+        }
+      });
+      
+      // 上传文件函数
+      async function uploadFile(file) {
+        try {
+          // 显示上传中状态
+          uploadMessage.textContent = '上传中...';
+          uploadSpinner.style.display = 'block';
+          
+          // 检查是否已连接
+          if (!window.bcExtension || connectionStatus.textContent !== '已连接') {
+            throw new Error('请先连接扩展');
+          }
+          
+          // 调用扩展上传文件API
+          const response = await window.bcExtension.uploadFileToIpfs(file);
+          
+          // 检查响应格式
+          if (!response.success) {
+            throw new Error(response.error || '上传失败');
+          }
+          
+          const result = response.data;
+          
+          // 显示上传结果
+          uploadResult.textContent = JSON.stringify(result, null, 2);
+          
+          // 更新上传历史
+          updateFileHistory();
+          
+          // 复制CID到剪贴板
+          navigator.clipboard.writeText(result.cid)
+            .then(() => alert(`文件上传成功！CID已复制: ${result.cid}`))
+            .catch(() => alert(`文件上传成功！CID: ${result.cid}`));
+            
+        } catch (error) {
+          uploadResult.textContent = `上传失败: ${error.message}`;
+          console.error('上传失败:', error);
+        } finally {
+          // 重置上传区域状态
+          uploadMessage.textContent = '拖拽文件到此处 或 点击上传';
+          uploadSpinner.style.display = 'none';
+          fileInput.value = ''; // 清空文件输入，允许重新上传相同文件
+        }
+      }
+      
+      // 更新文件历史列表
+      async function updateFileHistory() {
+        try {
+          // 获取上传历史
+          const response = await window.bcExtension.getIpfsFileHistory();
+          
+          // 检查响应格式
+          if (!response.success) {
+            throw new Error(response.error || '获取历史记录失败');
+          }
+          
+          const history = response.data;
+          
+          if (!history || history.length === 0) {
+            fileHistory.innerHTML = '<p>暂无上传记录</p>';
+            return;
+          }
+          
+          // 清空历史区域
+          fileHistory.innerHTML = '';
+          
+          // 添加历史记录项
+          history.forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            
+            // 格式化文件大小
+            const formattedSize = formatFileSize(file.size);
+            
+            // 格式化日期
+            const formattedDate = new Date(file.uploadTime).toLocaleString();
+            
+            fileItem.innerHTML = `
+              <div class="file-info">
+                <div class="file-name">${file.name} (${formattedSize})</div>
+                <div class="file-cid">CID: ${file.cid}</div>
+                <div class="file-date">${formattedDate}</div>
+              </div>
+              <div class="file-actions">
+                <button class="copy-cid-btn" data-cid="${file.cid}">复制CID</button>
+                <button class="download-btn" data-cid="${file.cid}" data-name="${file.name}">下载</button>
+              </div>
+            `;
+            
+            fileHistory.appendChild(fileItem);
+          });
+          
+          // 添加复制CID事件
+          document.querySelectorAll('.copy-cid-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              const cid = e.target.getAttribute('data-cid');
+              navigator.clipboard.writeText(cid)
+                .then(() => alert(`CID已复制: ${cid}`))
+                .catch(err => console.error('复制失败:', err));
+            });
+          });
+          
+          // 添加下载事件
+          document.querySelectorAll('.download-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const cid = e.target.getAttribute('data-cid');
+              const name = e.target.getAttribute('data-name');
+              try {
+                // 调用扩展下载文件API
+                const response = await window.bcExtension.downloadIpfsFile(cid);
+                
+                // 检查响应格式
+                if (!response.success) {
+                  throw new Error(response.error || '下载失败');
+                }
+                
+                alert(`文件已下载: ${name}`);
+              } catch (error) {
+                alert(`下载失败: ${error.message}`);
+                console.error('下载失败:', error);
+              }
+            });
+          });
+          
+        } catch (error) {
+          console.error('获取文件历史失败:', error);
+          fileHistory.innerHTML = `<p class="error">获取上传历史失败: ${error.message}</p>`;
+        }
+      }
+      
+      // 格式化文件大小
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      }
+      
+      // 初始化时尝试加载文件历史
+      updateFileHistory();
     }
     
     // 开始检查扩展是否已加载
