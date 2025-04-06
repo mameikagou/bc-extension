@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html,
+        body,
+        #popup-root {
+            min-height: 80vh;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-variant: none;
+            font-smooth: always;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #error-container {
+            display: none;
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+    </style>
+    <title>bc-extension</title>
+</head>
+
+<body>
+    <div id="error-container"></div>
+    <div id="popup-root"></div>
+    <script>
+        // 确保Chrome API可用，并处理可能的错误
+        window.addEventListener('error', function(event) {
+            const errorContainer = document.getElementById('error-container');
+            if (errorContainer) {
+                errorContainer.style.display = 'block';
+                errorContainer.innerText = '加载错误: ' + event.message;
+            }
+            console.error('加载错误:', event);
+        });
+
+        // 检测Chrome API是否可用
+        if (typeof chrome === 'undefined' || typeof chrome.runtime === 'undefined') {
+            const errorContainer = document.getElementById('error-container');
+            if (errorContainer) {
+                errorContainer.style.display = 'block';
+                errorContainer.innerText = 'Chrome API不可用。请确保在Chrome Extension环境中运行此页面。';
+            }
+            console.error('Chrome API不可用');
+        }
+    </script>
+    <script type="module" src="popup.js"></script>
+</body>
+
+</html>
