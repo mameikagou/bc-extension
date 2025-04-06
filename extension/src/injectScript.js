@@ -50,7 +50,7 @@
   }
   
   // 定义BC扩展API
-  const bcExtension = {
+  const dsweb = {
     // 连接到扩展
     async connect() {
       try {
@@ -148,5 +148,5 @@
   };
   
   // 将API对象注入到window对象
-  window.bcExtension = bcExtension;
+  window.dsweb = dsweb;
 })(); 

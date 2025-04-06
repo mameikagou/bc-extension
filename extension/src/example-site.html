@@ -130,9 +130,9 @@
   </div>
   
   <script>
-    // 检查bcExtension是否已加载
+    // 检查dsweb是否已加载
     function checkExtension() {
-      if (window.bcExtension) {
+      if (window.dsweb) {
         console.log('BC扩展已加载');
         initApp();
       } else {
@@ -162,7 +162,7 @@
       // 连接按钮事件
       connectButton.addEventListener('click', async () => {
         try {
-          const result = await window.bcExtension.connect();
+          const result = await window.dsweb.connect();
           connectionStatus.textContent = '已连接';
           connectionStatus.className = 'success';
           console.log('连接结果:', result);
@@ -180,7 +180,7 @@
       // 获取账户按钮事件
       getAccountsButton.addEventListener('click', async () => {
         try {
-          const result = await window.bcExtension.getAccounts();
+          const result = await window.dsweb.getAccounts();
           accountsResult.textContent = JSON.stringify(result, null, 2);
         } catch (error) {
           accountsResult.textContent = `获取账户失败: ${error.message}`;
@@ -197,7 +197,7 @@
             return;
           }
           
-          const result = await window.bcExtension.signMessage(message);
+          const result = await window.dsweb.signMessage(message);
           signatureResult.textContent = JSON.stringify(result, null, 2);
         } catch (error) {
           signatureResult.textContent = `签名失败: ${error.message}`;
@@ -248,12 +248,12 @@
           uploadSpinner.style.display = 'block';
           
           // 检查是否已连接
-          if (!window.bcExtension || connectionStatus.textContent !== '已连接') {
+          if (!window.dsweb || connectionStatus.textContent !== '已连接') {
             throw new Error('请先连接扩展');
           }
           
           // 调用扩展上传文件API
-          const response = await window.bcExtension.uploadFileToIpfs(file);
+          const response = await window.dsweb.uploadFileToIpfs(file);
           
           // 检查响应格式
           if (!response.success) {
@@ -288,7 +288,7 @@
       async function updateFileHistory() {
         try {
           // 获取上传历史
-          const response = await window.bcExtension.getIpfsFileHistory();
+          const response = await window.dsweb.getIpfsFileHistory();
           
           // 检查响应格式
           if (!response.success) {
@@ -348,7 +348,7 @@
               const name = e.target.getAttribute('data-name');
               try {
                 // 调用扩展下载文件API
-                const response = await window.bcExtension.downloadIpfsFile(cid);
+                const response = await window.dsweb.downloadIpfsFile(cid);
                 
                 // 检查响应格式
                 if (!response.success) {
