@@ -15,16 +15,27 @@ window.addEventListener('message', (event) => {
   
   if (event.data.type && event.data.type === 'BC_EXTENSION_REQUEST') {
     const method = event.data.payload.method;
-    const params = event.data.payload.params;
+    const params = event.data.payload.params || {}; // 确保params始终是一个对象
     const requestId = event.data.id;
     
+    console.log('Content script 接收请求详情:', {
+      method,
+      params,
+      requestId,
+      rawPayload: event.data.payload
+    });
+    
     // 所有请求都转发给background页面处理
-    chrome.runtime.sendMessage({
-      type: method,
+    const message = {
+      method: method,
       params: params,
       id: requestId,
       origin: window.location.origin
-    }, (response) => {
+    };
+    
+    console.log('Content script 转发给background的消息详情:', message);
+    
+    chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError) {
         console.error('发送消息错误:', chrome.runtime.lastError);
         // 响应错误
@@ -35,6 +46,12 @@ window.addEventListener('message', (event) => {
         }, '*');
         return;
       }
+      
+      console.log('Content script 接收响应详情:', {
+        requestId,
+        response,
+        error: response?.error
+      });
       
       // 处理来自background的响应
       window.postMessage({

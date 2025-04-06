@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	HashRouter as Router,
 	Route,
@@ -11,14 +11,24 @@ import Connect from "./components/Connect";
 import Sign from "./components/Sign";
 import IpfsSettings from "./components/IpfsSettings";
 import CreateAccount from "./components/CreateAccount";
+import { accountStorage } from "./utils/accountStorage";
 
 import { createRoot } from "react-dom/client";
 
 async function initPopup(): Promise<void> {
-	// biome-ignore lint/style/noNonNullAssertion: <explanation>
-	const container = document.getElementById("popup-root")!;
-	const root = createRoot(container);
-	root.render(<PopupApp />);
+	try {
+		// 初始化localForage账户存储
+		await accountStorage.migrateFromLocalStorage();
+		await accountStorage.initializeIfNeeded();
+		
+		// 渲染应用
+		// biome-ignore lint/style/noNonNullAssertion: <explanation>
+		const container = document.getElementById("popup-root")!;
+		const root = createRoot(container);
+		root.render(<PopupApp />);
+	} catch (error) {
+		console.error("初始化应用失败:", error);
+	}
 }
 
 initPopup().catch(console.error);

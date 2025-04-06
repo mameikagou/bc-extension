@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { accountApi } from '../utils/chromeApi';
+import { accountStorage } from '../utils/accountStorage';
 
 const CreateAccount: React.FC = () => {
   const [accountName, setAccountName] = useState('');
@@ -12,27 +12,19 @@ const CreateAccount: React.FC = () => {
   useEffect(() => {
     const checkForAccounts = async () => {
       try {
-        // 自动生成随机地址
-        const existingAccounts = localStorage.getItem('accounts');
-        if (!existingAccounts) {
-          // 如果本地没有账户数据，创建默认账户
+        // 尝试迁移localStorage中的数据到localForage
+        await accountStorage.migrateFromLocalStorage();
+        
+        // 检查是否需要初始化账户
+        const accounts = await accountStorage.getAccounts();
+        
+        if (accounts.length === 0) {
+          // 如果没有账户，初始化默认账户
           setAccountName('我的账户');
           setIsCreating(true);
           
-          // 创建一个默认账户，直接使用LocalStorage来简化逻辑
-          const randomAddress = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(20)))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-            
-          const defaultAccount = {
-            id: "1",
-            name: "我的账户",
-            address: randomAddress
-          };
-          
-          // 保存到localStorage
-          localStorage.setItem('accounts', JSON.stringify([defaultAccount]));
-          localStorage.setItem('currentAccountId', "1");
+          // 初始化默认账户
+          await accountStorage.initializeIfNeeded();
           
           // 延迟跳转，让用户看到创建过程
           setTimeout(() => {
@@ -59,30 +51,12 @@ const CreateAccount: React.FC = () => {
       setIsCreating(true);
       setError('');
 
-      // 创建新账户，生成随机地址
-      const randomAddress = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(20)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      // 获取现有账户
-      const existingAccountsJson = localStorage.getItem('accounts');
-      const existingAccounts = existingAccountsJson ? JSON.parse(existingAccountsJson) : [];
+      // 使用新的accountStorage API创建账户
+      const newAccount = await accountStorage.addAccount(accountName);
       
-      // 创建新账户ID
-      const newId = (existingAccounts.length + 1).toString();
-      
-      // 添加新账户
-      const newAccount = {
-        id: newId,
-        name: accountName,
-        address: randomAddress
-      };
-      
-      existingAccounts.push(newAccount);
-      
-      // 保存到localStorage
-      localStorage.setItem('accounts', JSON.stringify(existingAccounts));
-      localStorage.setItem('currentAccountId', newId);
+      if (!newAccount) {
+        throw new Error('创建账户失败');
+      }
 
       // 导航回主页
       navigate('/home');

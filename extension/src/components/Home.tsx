@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Account,
-  accountApi,
   extensionApi,
   IpfsFile,
   IpfsNode,
 } from "../utils/chromeApi";
+import { Account, accountStorage } from "../utils/accountStorage";
 import AccountHeader from "./AccountHeader";
 import IpfsFileList from "./IpfsFileList";
 
@@ -24,6 +23,12 @@ const Home: React.FC = () => {
       try {
         setIsLoading(true);
 
+        // 尝试迁移localStorage中的账户数据到localForage
+        await accountStorage.migrateFromLocalStorage();
+        
+        // 初始化账户如果需要
+        await accountStorage.initializeIfNeeded();
+
         // 获取当前激活的IPFS节点
         const node = await extensionApi.getCurrentIpfsNode();
         setCurrentIpfsNode(node);
@@ -33,7 +38,7 @@ const Home: React.FC = () => {
         setConnectedSites(sites);
 
         // 获取账户列表
-        const allAccounts = await accountApi.getAccounts();
+        const allAccounts = await accountStorage.getAccounts();
         setAccounts(allAccounts);
 
         // 检查是否有账户，没有则重定向到创建账户页面
@@ -43,15 +48,11 @@ const Home: React.FC = () => {
         }
 
         // 获取当前账户
-        const account = await accountApi.getCurrentAccount();
+        const account = await accountStorage.getCurrentAccount();
         setCurrentAccount(account);
       } catch (error) {
         console.error("加载数据失败:", error);
-        // 如果出错，检查localStorage中是否有账户
-        const localAccounts = localStorage.getItem("accounts");
-        if (!localAccounts) {
-          navigate("/create-account");
-        }
+        navigate("/create-account");
       } finally {
         setIsLoading(false);
       }
@@ -63,13 +64,36 @@ const Home: React.FC = () => {
   // 切换账户处理函数
   const handleAccountChange = async (accountId: string) => {
     try {
-      await accountApi.setCurrentAccountId(accountId);
+      await accountStorage.setCurrentAccountId(accountId);
       const newCurrentAccount = accounts.find((acc) => acc.id === accountId);
       if (newCurrentAccount) {
         setCurrentAccount(newCurrentAccount);
       }
     } catch (error) {
       console.error("切换账户失败:", error);
+    }
+  };
+  
+  // 删除账户处理函数
+  const handleAccountDelete = async (accountId: string): Promise<boolean> => {
+    try {
+      // 使用accountStorage删除账户
+      const success = await accountStorage.deleteAccount(accountId);
+      
+      if (success) {
+        // 更新账户列表
+        const updatedAccounts = await accountStorage.getAccounts();
+        setAccounts(updatedAccounts);
+        
+        // 更新当前账户
+        const updatedCurrentAccount = await accountStorage.getCurrentAccount();
+        setCurrentAccount(updatedCurrentAccount);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error("删除账户失败:", error);
+      return false;
     }
   };
 
@@ -123,6 +147,7 @@ const Home: React.FC = () => {
         currentAccount={currentAccount}
         accounts={accounts}
         onAccountChange={handleAccountChange}
+        onAccountDelete={handleAccountDelete}
       />
 
       <h1 style={{ textAlign: "center", marginBottom: "20px" }}>钱包首页</h1>
